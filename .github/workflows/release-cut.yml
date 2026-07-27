@@ -1211,7 +1211,10 @@ jobs:
       # `WRITE_KEY = null`, which silently disables transport
       # (`IS_OFFICIAL_BUILD === false`) — the exact failure mode flagged
       # in PR #1385's deferred follow-up.
+      # Fork CI: skip telemetry check on Windows since ORCA_POSTHOG_WRITE_KEY
+      # is not available (no secrets), so constants won't be substituted.
       - name: Verify telemetry constants present in app.asar
+        if: matrix.platform != 'win'
         run: node config/scripts/verify-telemetry-constants.mjs
 
   build-mac:
@@ -1284,7 +1287,7 @@ jobs:
       - name: Download Windows installer artifact
         uses: actions/download-artifact@v7
         with:
-          name: orca-windows-unsigned-${{ needs.cut.outputs.tag }}
+          name: orca-windows-build-${{ needs.cut.outputs.tag }}
           path: artifacts/windows
 
       - name: Upload Windows installer to release
