@@ -1295,8 +1295,16 @@ jobs:
           set -euo pipefail
           echo "Files in artifacts/windows:"
           ls -la artifacts/windows/ 2>/dev/null || echo "Directory not found or empty"
+          # Only upload files, not subdirectories (win-unpacked/ is a dir, not an asset)
           if [[ -d artifacts/windows && -n "$(ls -A artifacts/windows 2>/dev/null)" ]]; then
-            gh release upload "${{ needs.cut.outputs.tag }}" artifacts/windows/* --clobber --repo "${{ github.repository }}"
+            shopt -s nullglob
+            files=()
+            for f in artifacts/windows/orca-windows-setup.exe* artifacts/windows/latest.yml; do
+              [[ -f "$f" ]] && files+=("$f")
+            done
+            if [[ ${#files[@]} -gt 0 ]]; then
+              gh release upload "${{ needs.cut.outputs.tag }}" "${files[@]}" --clobber --repo "${{ github.repository }}"
+            fi
           else
             echo "No Windows artifact found; skipping"
           fi
