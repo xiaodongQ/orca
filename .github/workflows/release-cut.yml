@@ -1153,20 +1153,14 @@ jobs:
 
       # ── Windows unsigned build (SignPath skipped for fork CI) ───────────
 
-      - name: Upload unsigned Windows installer to release
+      - name: Upload unsigned Windows installer as artifact
         if: matrix.platform == 'win'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $installer = 'dist/orca-windows-setup.exe'
-          if (-not (Test-Path $installer)) {
-            Write-Host "::error::Installer not found at $installer"
-            Get-ChildItem -Recurse -Path dist -Filter '*.exe' | ForEach-Object { Write-Host "  Found: $($_.FullName)" }
-            exit 1
-          }
-          $size = (Get-Item $installer).Length
-          Write-Host "Uploading $installer ($size bytes)"
-          gh release upload "${{ needs.cut.outputs.tag }}" "$installer" --clobber --repo "${{ github.repository }}"
+        uses: actions/upload-artifact@v7
+        with:
+          name: orca-windows-unsigned-${{ needs.cut.outputs.tag }}
+          path: dist/orca-windows-setup.exe
+          retention-days: 7
+          if-no-files-found: error
 
       - name: Verify release remains draft after artifact upload
         # Why: the build matrix must never be the actor that exposes a partial
@@ -1275,6 +1269,25 @@ jobs:
             echo "::error::Release $TAG was published before publish-release; refusing to continue."
             exit 1
           fi
+
+      - name: Download Windows installer artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: orca-windows-unsigned-${{ needs.cut.outputs.tag }}
+          path: artifacts/windows
+
+      - name: Upload Windows installer to release
+        run: |
+          set -euo pipefail
+          echo "Files in artifacts/windows:"
+          ls -la artifacts/windows/ 2>/dev/null || echo "Directory not found or empty"
+          if [[ -d artifacts/windows && -n "$(ls -A artifacts/windows 2>/dev/null)" ]]; then
+            gh release upload "${{ needs.cut.outputs.tag }}" artifacts/windows/* --clobber --repo "${{ github.repository }}"
+          else
+            echo "No Windows artifact found; skipping"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify release assets complete
         # Why: publish-release is the only intended draft -> published
