@@ -1001,9 +1001,8 @@ jobs:
               ~/.cache/electron-builder
 
     runs-on: ${{ matrix.os }}
-    # Why: hosted runners hard-cap jobs at 6h; the Windows SignPath waits
-    # (1h inner + 4h installer) are budgeted to fit under this with the
-    # build itself, so a slow approval can't kill the job mid-flow.
+    # Why: hosted runners hard-cap jobs at 6h; Windows build (electron-builder
+    # + blockmap + upload) is budgeted to fit within this limit.
     timeout-minutes: 360
 
     permissions:
@@ -1152,115 +1151,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Why: SignPath signs GitHub workflow artifacts, so Windows builds must
-      # upload only after the production-signed installer has been returned.
-      - name: Build Windows release artifacts
-        if: matrix.platform == 'win'
-        uses: nick-fields/retry@v4
-        with:
-          timeout_minutes: 30
-          max_attempts: 3
-          retry_wait_seconds: 30
-          command: ${{ matrix.release_command }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Verify Windows node-pty ConPTY runtime
-        if: matrix.platform == 'win'
-        shell: pwsh
-        run: |
-          $runtimeDir = 'dist/win-unpacked/resources/node_modules/node-pty/build/Release'
-          $requiredFiles = @(
-            "$runtimeDir/conpty.node",
-            "$runtimeDir/conpty/conpty.dll",
-            "$runtimeDir/conpty/OpenConsole.exe"
-          )
-          foreach ($file in $requiredFiles) {
-            if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
-              throw "Missing Windows node-pty runtime file: $file"
-            }
-            Get-Item -LiteralPath $file
-          }
-
-      - name: Install SignPath PowerShell module
-        if: matrix.platform == 'win'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          # Why: force TLS 1.2 so gallery downloads work on older hosted images.
-          [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-
-          # Why: on some hosted Windows images `Register-PSRepository -Default`
-          # fails inside the legacy nuget.exe provider with "Missing option value
-          # for: '-source'", so PSGallery is never registered and the install
-          # below dies with "No repository with the name 'PSGallery'". PSResourceGet
-          # (bundled with PowerShell 7.4+) has PSGallery registered by default and
-          # avoids that code path, so prefer it and fall back to PowerShellGet only
-          # when it is absent.
-          $useResourceGet = $null -ne (Get-Command -Name Install-PSResource -ErrorAction SilentlyContinue)
-
-          if ($useResourceGet) {
-            if ($null -eq (Get-PSResourceRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
-              Register-PSResourceRepository -PSGallery -Trusted
-            } else {
-              Set-PSResourceRepository -Name PSGallery -Trusted
-            }
-          } else {
-            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force | Out-Null
-            if ($null -eq (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
-              Register-PSRepository -Default -InstallationPolicy Trusted
-            }
-            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-          }
-
-          $trimChars = [char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
-          $documentsRoot = [System.IO.Path]::GetFullPath([Environment]::GetFolderPath('MyDocuments')).TrimEnd($trimChars)
-          $currentUserModuleRoot = $env:PSModulePath -split [System.IO.Path]::PathSeparator |
-            Where-Object {
-              if ([string]::IsNullOrWhiteSpace($_)) {
-                $false
-              } else {
-                $candidate = [System.IO.Path]::GetFullPath($_).TrimEnd($trimChars)
-                $candidate.StartsWith($documentsRoot, [System.StringComparison]::OrdinalIgnoreCase)
-              }
-            } |
-            Select-Object -First 1
-
-          if ([string]::IsNullOrWhiteSpace($currentUserModuleRoot)) {
-            throw 'Unable to resolve the current-user PowerShell module root from PSModulePath.'
-          }
-
-          $signPathModulePath = Join-Path -Path $currentUserModuleRoot -ChildPath 'SignPath'
-
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
-            if ($attempt -eq 2) {
-              Start-Sleep -Seconds 15
-            } elseif ($attempt -eq 3) {
-              Start-Sleep -Seconds 30
-            }
-
-            try {
-              if ($useResourceGet) {
-                Install-PSResource -Name SignPath -Version '[4.0.0,5.0.0)' -Repository PSGallery -Scope CurrentUser -TrustRepository -Reinstall -ErrorAction Stop
-              } else {
-                Install-Module -Name SignPath -Repository PSGallery -MinimumVersion 4.0.0 -MaximumVersion 4.999.999 -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop
-              }
-              Import-Module SignPath -ErrorAction Stop
-              Get-Command -Name Get-SignedArtifact -Module SignPath -ErrorAction Stop
-              break
-            } catch {
-              if ($attempt -eq 3) {
-                throw
-              }
-
-              Write-Warning "SignPath PowerShell module preflight attempt $attempt failed: $_"
-              if (Test-Path -LiteralPath $signPathModulePath) {
-                Write-Warning "Removing current-user SignPath module directory before retry: $signPathModulePath"
-                Remove-Item -LiteralPath $signPathModulePath -Recurse -Force
-              }
-            }
-          }
-
       # ── Windows unsigned build (SignPath skipped for fork CI) ───────────
 
       - name: Stage unsigned Windows release assets
@@ -1348,9 +1238,8 @@ jobs:
       - cut
       - create-release
     if: needs.cut.outputs.should_release == 'true'
-    # Why: SignPath requires every job in this signing workflow to be
-    # GitHub-hosted. The actual mac build runs in release-mac-build.yml so
-    # Blacksmith stays outside Windows artifact provenance.
+    # Note: macOS build runs via release-mac-build.yml (requires Apple signing).
+    # Windows build is unsigned (SignPath skipped for fork CI).
     runs-on: ubuntu-latest
     permissions:
       actions: write
