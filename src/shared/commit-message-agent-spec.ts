@@ -671,6 +671,37 @@ export const COMMIT_MESSAGE_AGENT_SPECS: Partial<Record<TuiAgent, CommitMessageA
       { id: 'Gemini 3.5 Flash (Low)', label: 'Gemini 3.5 Flash (Low)' }
     ],
     defaultModelId: 'Gemini 3.5 Flash (Medium)'
+  },
+  codebuddy: {
+    id: 'codebuddy',
+    label: 'Codebuddy',
+    binary: 'codebuddy',
+    promptDelivery: 'stdin',
+    buildArgs: ({ model, thinkingLevel }) => [
+      '-p',
+      '--output-format',
+      'text',
+      '--model',
+      model,
+      '--permission-mode',
+      'plan',
+      ...(thinkingLevel ? ['--effort', thinkingLevel] : [])
+    ],
+    modelSource: 'static',
+    models: [
+      { id: 'minimax-m3', label: 'Minimax M3' },
+      { id: 'minimax-m2.7', label: 'Minimax M2.7' },
+      { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
+      { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
+      { id: 'kimi-k3-1', label: 'Kimi K3.1' },
+      { id: 'kimi-k2.7', label: 'Kimi K2.7' },
+      { id: 'kimi-k2.6', label: 'Kimi K2.6' },
+      { id: 'glm-5.2', label: 'GLM 5.2' },
+      { id: 'glm-5.1', label: 'GLM 5.1' },
+      { id: 'glm-5v-turbo', label: 'GLM 5V Turbo' },
+      { id: 'hy3', label: 'Hy3' }
+    ],
+    defaultModelId: 'minimax-m3'
   }
 }
 
