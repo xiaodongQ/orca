@@ -1157,6 +1157,28 @@ jobs:
         if: matrix.platform == 'win'
         shell: pwsh
         run: |
+          # Debug: list what electron-builder produced
+          Write-Host "=== dist/ contents ==="
+          if (Test-Path 'dist') {
+            Get-ChildItem 'dist' -Recurse -File | Select-Object FullName, Length | Format-Table
+          } else {
+            Write-Host "dist/ does not exist!"
+          }
+
+          # Locate the installer (electron-builder may use different naming)
+          $installerPath = Get-ChildItem 'dist' -Recurse -File -Filter '*-setup.exe' | Select-Object -First 1
+          if ($null -eq $installerPath) {
+            Write-Host "::error::No *-setup.exe found in dist/"
+            throw "No installer found in dist/"
+          }
+          Write-Host "Found installer: $($installerPath.FullName)"
+
+          # Rename to standard name if different
+          if ($installerPath.Name -ne 'orca-windows-setup.exe') {
+            Copy-Item $installerPath.FullName 'dist/orca-windows-setup.exe' -Force
+            Write-Host "Renamed $($installerPath.Name) -> orca-windows-setup.exe"
+          }
+
           # Generate blockmap for auto-update support
           node config/scripts/generate-windows-blockmap.mjs 'dist/orca-windows-setup.exe' 'dist/orca-windows-setup.exe.blockmap'
           if ($LASTEXITCODE -ne 0) { throw "blockmap generation failed with exit code $LASTEXITCODE" }
