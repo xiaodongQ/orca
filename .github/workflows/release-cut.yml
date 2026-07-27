@@ -1158,18 +1158,15 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          # Find the installer - electron-builder names it OrcaSetup.exe or *-setup.exe
-          $installer = Get-ChildItem -Recurse -Path dist -Filter '*-setup.exe' | Select-Object -First 1
-          if ($null -eq $installer) {
-            $installer = Get-ChildItem -Recurse -Path dist -Filter 'OrcaSetup*.exe' | Select-Object -First 1
-          }
-          if ($null -eq $installer) {
-            Write-Host "::error::No installer found in dist/"
-            Get-ChildItem -Recurse -Path dist -Filter '*.exe' | ForEach-Object { Write-Host "  $($_.FullName)" }
+          $installer = 'dist/orca-windows-setup.exe'
+          if (-not (Test-Path $installer)) {
+            Write-Host "::error::Installer not found at $installer"
+            Get-ChildItem -Recurse -Path dist -Filter '*.exe' | ForEach-Object { Write-Host "  Found: $($_.FullName)" }
             exit 1
           }
-          Write-Host "Found installer: $($installer.FullName) ($($installer.Length) bytes)"
-          gh release upload "${{ needs.cut.outputs.tag }}" $installer.FullName --clobber --repo "${{ github.repository }}"
+          $size = (Get-Item $installer).Length
+          Write-Host "Uploading $installer ($size bytes)"
+          gh release upload "${{ needs.cut.outputs.tag }}" "$installer" --clobber --repo "${{ github.repository }}"
 
       - name: Verify release remains draft after artifact upload
         # Why: the build matrix must never be the actor that exposes a partial
