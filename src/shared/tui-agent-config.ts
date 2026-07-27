@@ -96,6 +96,14 @@ export const TUI_AGENT_CONFIG: Record<TuiAgent, TuiAgentConfig> = {
     // Why: `ante --prompt` is headless (runs once and exits), so launch the bare TUI and inject after startup.
     promptInjectionMode: 'stdin-after-start'
   },
+  codebuddy: {
+    detectCmd: 'codebuddy',
+    detectCmdAliases: ['cbc'],
+    launchCmd: 'codebuddy',
+    expectedProcess: 'codebuddy',
+    // Why: codebuddy starts an interactive session by default; inject prompt after PTY is ready.
+    promptInjectionMode: 'stdin-after-start'
+  },
   opencode: {
     detectCmd: 'opencode',
     launchCmd: 'opencode',

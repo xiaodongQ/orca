@@ -105,6 +105,12 @@ export const getAgentCatalog = createLocalizedCatalog((): AgentCatalogEntry[] =>
     homepageUrl: 'https://github.com/AntigmaLabs/ante-preview'
   },
   {
+    id: 'codebuddy',
+    label: translate('auto.lib.agent.catalog.codebuddy', 'Codebuddy'),
+    cmd: 'codebuddy',
+    homepageUrl: 'https://codebuddy.ai/docs/cli'
+  },
+  {
     id: 'pi',
     label: translate('auto.lib.agent.catalog.302934c5d9', 'Pi'),
     cmd: 'pi',
