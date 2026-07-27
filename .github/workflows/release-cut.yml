@@ -1153,35 +1153,23 @@ jobs:
 
       # ── Windows unsigned build (SignPath skipped for fork CI) ───────────
 
-      - name: Find Windows installer path
+      - name: Build Windows installer (unsigned)
         if: matrix.platform == 'win'
-        id: find-installer
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $patterns = @('dist/orca-windows-setup.exe', 'dist/*setup*.exe')
-          $found = $null
-          foreach ($p in $patterns) {
-            $files = Get-ChildItem -Path $p -ErrorAction SilentlyContinue
-            if ($files) {
-              $found = $files | Select-Object -First 1
-              Write-Host "Found: $($found.FullName)"
-              "installer-path=$($found.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-              break
-            }
-          }
-          if (-not $found) {
-            Write-Host "::error::No Windows installer found"
-            Get-ChildItem -Recurse -Path dist -Filter '*.exe' | ForEach-Object { Write-Host "  $($_.FullName)" }
-            exit 1
-          }
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 30
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: ${{ matrix.release_command }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload unsigned Windows installer as artifact
+      - name: Upload Windows build output as artifact
         if: matrix.platform == 'win'
         uses: actions/upload-artifact@v7
         with:
-          name: orca-windows-unsigned-${{ needs.cut.outputs.tag }}
-          path: ${{ steps.find-installer.outputs.installer-path }}
+          name: orca-windows-build-${{ needs.cut.outputs.tag }}
+          path: dist
           retention-days: 7
           if-no-files-found: error
 
