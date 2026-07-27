@@ -4,12 +4,22 @@ import { pathToFileURL } from 'node:url'
 
 const API_VERSION = '2022-11-28'
 
-export function getRequiredReleaseAssetNames(tag) {
+const MAC_OS_ASSETS = (version) => [
+  `Orca-${version}-mac.zip`,
+  `Orca-${version}-mac.zip.blockmap`,
+  `Orca-${version}-arm64-mac.zip`,
+  `Orca-${version}-arm64-mac.zip.blockmap`,
+  'orca-macos-x64.dmg',
+  'orca-macos-x64.dmg.blockmap',
+  'orca-macos-arm64.dmg',
+  'orca-macos-arm64.dmg.blockmap'
+]
+
+export function getRequiredReleaseAssetNames(tag, { adHoc = false } = {}) {
   const version = tag.replace(/^v/i, '')
-  return [
+  const assets = [
     'latest-linux.yml',
     'latest-linux-arm64.yml',
-    'latest-mac.yml',
     'latest.yml',
     'orca-linux.AppImage',
     'orca-linux-arm64.AppImage',
@@ -18,16 +28,12 @@ export function getRequiredReleaseAssetNames(tag) {
     `orca-ide-${version}.x86_64.rpm`,
     `orca-ide-${version}.aarch64.rpm`,
     'orca-windows-setup.exe',
-    'orca-windows-setup.exe.blockmap',
-    `Orca-${version}-mac.zip`,
-    `Orca-${version}-mac.zip.blockmap`,
-    `Orca-${version}-arm64-mac.zip`,
-    `Orca-${version}-arm64-mac.zip.blockmap`,
-    'orca-macos-x64.dmg',
-    'orca-macos-x64.dmg.blockmap',
-    'orca-macos-arm64.dmg',
-    'orca-macos-arm64.dmg.blockmap'
+    'orca-windows-setup.exe.blockmap'
   ]
+  if (!adHoc) {
+    assets.push(...MAC_OS_ASSETS(version), 'latest-mac.yml')
+  }
+  return assets
 }
 
 export function extractManifestAssetNames(manifestText) {
@@ -85,17 +91,25 @@ async function fetchAssetText(repo, asset, token) {
   return res.text()
 }
 
-export async function verifyRequiredReleaseAssets({ repo, tag, token }) {
+export async function verifyRequiredReleaseAssets({ repo, tag, token, adHoc = false }) {
   const release = await fetchRelease(repo, tag, token)
   const assetsByName = new Map(release.assets.map((asset) => [asset.name, asset]))
 
-  const requiredNames = new Set(getRequiredReleaseAssetNames(tag))
+  // Detect ad-hoc mode: if macOS signing was skipped, no macOS assets will be present.
+  // Auto-detect by checking whether ALL expected macOS assets are absent from the release.
+  const version = tag.replace(/^v/i, '')
+  const macOSAssetNames = MAC_OS_ASSETS(version)
+  const presentMacOSAssets = macOSAssetNames.filter((name) => assetsByName.has(name))
+  const detectedAdHoc = !adHoc && presentMacOSAssets.length === 0 && macOSAssetNames.length > 0
+  const effectiveAdHoc = adHoc || detectedAdHoc
+
+  const requiredNames = new Set(getRequiredReleaseAssetNames(tag, { adHoc: effectiveAdHoc }))
   const manifestNames = [
     'latest-linux.yml',
     'latest-linux-arm64.yml',
-    'latest-mac.yml',
+    effectiveAdHoc ? null : 'latest-mac.yml',
     'latest.yml'
-  ]
+  ].filter(Boolean)
 
   for (const manifestName of manifestNames) {
     const manifestAsset = assetsByName.get(manifestName)
@@ -137,22 +151,34 @@ export async function verifyRequiredReleaseAssets({ repo, tag, token }) {
     tag,
     checked: [...requiredNames].sort(),
     draft: release.draft,
-    prerelease: release.prerelease
+    prerelease: release.prerelease,
+    detectedAdHoc
   }
 }
 
 async function main() {
-  const tag = process.argv[2]
+  const args = process.argv.slice(2)
+  const adHoc = args.includes('--ad-hoc')
+  const tag = args.find((a) => !a.startsWith('--'))
   if (!tag) {
-    throw new Error('Usage: node config/scripts/verify-release-required-assets.mjs <tag>')
+    throw new Error(
+      'Usage: node config/scripts/verify-release-required-assets.mjs <tag> [--ad-hoc]'
+    )
   }
   const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN
   if (!token) {
     throw new Error('GH_TOKEN or GITHUB_TOKEN must be set')
   }
   const repo = process.env.GITHUB_REPOSITORY || 'stablyai/orca'
-  const result = await verifyRequiredReleaseAssets({ repo, tag, token })
-  console.log(`Verified ${result.checked.length} required release assets for ${repo}@${tag}`)
+  const result = await verifyRequiredReleaseAssets({ repo, tag, token, adHoc })
+  const adHocNote = detectedAdHoc
+    ? ' (auto-detected ad-hoc: macOS assets skipped)'
+    : adHoc
+      ? ' (ad-hoc: macOS assets skipped)'
+      : ''
+  console.log(
+    `Verified ${result.checked.length} required release assets for ${repo}@${tag}${adHocNote}`
+  )
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
