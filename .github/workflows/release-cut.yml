@@ -1157,43 +1157,43 @@ jobs:
         if: matrix.platform == 'win'
         shell: pwsh
         run: |
-          # Debug: list what electron-builder produced
+          $ErrorActionPreference = 'Continue'
           Write-Host "=== dist/ contents ==="
           if (Test-Path 'dist') {
-            Get-ChildItem 'dist' -Recurse -File | Select-Object FullName, Length | Format-Table
+            Get-ChildItem 'dist' -Recurse -File | ForEach-Object {
+              Write-Host "  $($_.FullName) ($($_.Length) bytes)"
+            }
           } else {
             Write-Host "dist/ does not exist!"
           }
 
-          # Locate the installer (electron-builder may use different naming)
           $installerPath = Get-ChildItem 'dist' -Recurse -File -Filter '*-setup.exe' | Select-Object -First 1
           if ($null -eq $installerPath) {
             Write-Host "::error::No *-setup.exe found in dist/"
             throw "No installer found in dist/"
           }
-          Write-Host "Found installer: $($installerPath.FullName)"
+          Write-Host "Found installer: $($installerPath.FullName) ($($installerPath.Length) bytes)"
 
-          # Rename to standard name if different
           if ($installerPath.Name -ne 'orca-windows-setup.exe') {
             Copy-Item $installerPath.FullName 'dist/orca-windows-setup.exe' -Force
             Write-Host "Renamed $($installerPath.Name) -> orca-windows-setup.exe"
           }
 
-          # Generate blockmap for auto-update support
+          Write-Host "Running blockmap generation..."
           node config/scripts/generate-windows-blockmap.mjs 'dist/orca-windows-setup.exe' 'dist/orca-windows-setup.exe.blockmap'
-          if ($LASTEXITCODE -ne 0) { throw "blockmap generation failed with exit code $LASTEXITCODE" }
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::blockmap generation failed with exit code $LASTEXITCODE"
+            throw "blockmap generation failed"
+          }
+          Write-Host "Blockmap generated successfully"
 
-          # Compute sha512 and update latest.yml
           $installer = Get-Item 'dist/orca-windows-setup.exe'
           $blockmap = Get-Item 'dist/orca-windows-setup.exe.blockmap'
           $stream = [System.IO.File]::OpenRead($installer.FullName)
-          try {
-            $sha512 = [System.Security.Cryptography.SHA512]::Create()
-            $hash = [Convert]::ToBase64String($sha512.ComputeHash($stream))
-          } finally {
-            if ($null -ne $sha512) { $sha512.Dispose() }
-            $stream.Dispose()
-          }
+          $sha512 = [System.Security.Cryptography.SHA512]::Create()
+          $hash = [Convert]::ToBase64String($sha512.ComputeHash($stream))
+          $stream.Dispose()
+          $sha512.Dispose()
 
           $latestYml = Get-Content -Path 'dist/latest.yml' -Raw
           $latestYml = [regex]::Replace($latestYml, '(?m)^(\s*)sha512: .+$', { param($m) "$($m.Groups[1].Value)sha512: $hash" })
@@ -1201,7 +1201,11 @@ jobs:
           $latestYml = $latestYml -replace '(?m)^    blockMapSize: \d+$', "    blockMapSize: $($blockmap.Length)"
           Set-Content -Path 'dist/latest.yml' -Value $latestYml -NoNewline
 
-          Get-Item 'dist/orca-windows-setup.exe', 'dist/orca-windows-setup.exe.blockmap', 'dist/latest.yml'
+          Write-Host "All files staged:"
+          Get-ChildItem 'dist/orca-windows-setup.exe', 'dist/orca-windows-setup.exe.blockmap', 'dist/latest.yml' | ForEach-Object {
+            Write-Host "  $($_.Name) ($($_.Length) bytes)"
+          }
+          Write-Host "Stage complete."
 
       - name: Publish unsigned Windows release artifacts
         if: matrix.platform == 'win'
