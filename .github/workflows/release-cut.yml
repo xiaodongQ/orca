@@ -1155,18 +1155,21 @@ jobs:
 
       - name: Upload unsigned Windows installer to release
         if: matrix.platform == 'win'
+        shell: pwsh
         run: |
-          set -euo pipefail
-          # Find the installer in the unpacked build output
-          INSTALLER=$(find dist -name 'OrcaSetup*.exe' -o -name 'orca-*-setup.exe' -o -name '*setup.exe' 2>/dev/null | head -1)
-          if [[ -z "$INSTALLER" ]]; then
-            echo "::error::No installer found in dist/"
-            ls -la dist/ || true
-            find dist/ -name '*.exe' 2>/dev/null || echo 'No .exe files found'
+          $ErrorActionPreference = 'Stop'
+          # Find the installer - electron-builder names it OrcaSetup.exe or *-setup.exe
+          $installer = Get-ChildItem -Recurse -Path dist -Filter '*-setup.exe' | Select-Object -First 1
+          if ($null -eq $installer) {
+            $installer = Get-ChildItem -Recurse -Path dist -Filter 'OrcaSetup*.exe' | Select-Object -First 1
+          }
+          if ($null -eq $installer) {
+            Write-Host "::error::No installer found in dist/"
+            Get-ChildItem -Recurse -Path dist -Filter '*.exe' | ForEach-Object { Write-Host "  $($_.FullName)" }
             exit 1
-          fi
-          echo "Found installer: $INSTALLER"
-          gh release upload "${{ needs.cut.outputs.tag }}" "$INSTALLER" --clobber --repo "${{ github.repository }}"
+          }
+          Write-Host "Found installer: $($installer.FullName) ($($installer.Length) bytes)"
+          gh release upload "${{ needs.cut.outputs.tag }}" $installer.FullName --clobber --repo "${{ github.repository }}"
 
       - name: Verify release remains draft after artifact upload
         # Why: the build matrix must never be the actor that exposes a partial
